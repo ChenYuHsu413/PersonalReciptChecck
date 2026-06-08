@@ -1,0 +1,24 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.env
+.venv
+venv/
+ENV/
+env/
+
+# Google API Credentials (CRITICAL: Do NOT upload)
+credentials.json
+service_account.json
+token.json
+
+# Local caching and downloads
+processed_emails.json
+downloads/
+
+# IDE files
+.vscode/
+.idea/

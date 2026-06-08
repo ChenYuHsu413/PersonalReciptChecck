@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gmail 發票自動化對獎系統 Dashboard</title>
+    <meta name="description" content="自動搜尋 Gmail 發票、自動對獎、並同步至 Google Sheets 的視覺化管理後台。">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Lucide Icons CDN -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Custom Style Sheet -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Background Elements -->
+    <div class="bg-glow bg-glow-1"></div>
+    <div class="bg-glow bg-glow-2"></div>
+    <div class="bg-glow bg-glow-3"></div>
+
+    <div class="app-container">
+        <!-- Sidebar / Navigation -->
+        <header class="main-header glass-card">
+            <div class="brand">
+                <div class="logo-container">
+                    <i data-lucide="receipt" class="logo-icon"></i>
+                </div>
+                <div>
+                    <h1>發票對獎助手</h1>
+                    <span class="sub-title">Gmail & Sheets API 自動化系統</span>
+                </div>
+            </div>
+            
+            <div class="header-actions">
+                <div class="status-indicator-bar">
+                    <span class="status-dot-pulse idle" id="system-status-dot"></span>
+                    <span id="system-status-text" class="status-text">系統就緒</span>
+                </div>
+                <button id="sync-btn" class="btn btn-primary btn-glow">
+                    <i data-lucide="refresh-cw" id="sync-icon"></i>
+                    <span>立即同步 Gmail</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Stats Overview Row -->
+        <section class="stats-grid">
+            <!-- Stat 1: Total Invoices -->
+            <div class="stat-card glass-card">
+                <div class="stat-header">
+                    <span class="stat-label">累積讀取發票</span>
+                    <div class="stat-icon-wrapper blue">
+                        <i data-lucide="layers"></i>
+                    </div>
+                </div>
+                <div class="stat-value" id="stat-total-count">0</div>
+                <div class="stat-desc">經 Gmail API 解析儲存</div>
+            </div>
+
+            <!-- Stat 2: Total Spent -->
+            <div class="stat-card glass-card">
+                <div class="stat-header">
+                    <span class="stat-label">累積消費金額</span>
+                    <div class="stat-icon-wrapper green">
+                        <i data-lucide="dollar-sign"></i>
+                    </div>
+                </div>
+                <div class="stat-value" id="stat-total-amount">NT$ 0</div>
+                <div class="stat-desc" id="stat-avg-amount">平均每張 NT$ 0</div>
+            </div>
+
+            <!-- Stat 3: Winnings -->
+            <div class="stat-card glass-card key-highlight">
+                <div class="stat-header">
+                    <span class="stat-label">中獎發票數</span>
+                    <div class="stat-icon-wrapper gold">
+                        <i data-lucide="trophy"></i>
+                    </div>
+                </div>
+                <div class="stat-value text-gold" id="stat-winnings-count">0</div>
+                <div class="stat-desc text-gold-dim" id="stat-winnings-text">期待幸運之神降臨</div>
+            </div>
+
+            <!-- Stat 4: Pending / Encrypted -->
+            <div class="stat-card glass-card">
+                <div class="stat-header">
+                    <span class="stat-label">未開獎 / 加密</span>
+                    <div class="stat-icon-wrapper purple">
+                        <i data-lucide="help-circle"></i>
+                    </div>
+                </div>
+                <div class="stat-value" id="stat-pending-count">0</div>
+                <div class="stat-desc" id="stat-encrypted-count">加密 PDF / 未開獎發票</div>
+            </div>
+        </section>
+
+        <!-- Live Sync Terminal & Charting Section -->
+        <section class="dashboard-middle-grid">
+            <!-- Left: Terminal console log -->
+            <div class="terminal-panel glass-card">
+                <div class="panel-header">
+                    <div class="panel-title-wrapper">
+                        <i data-lucide="terminal" class="title-icon text-cyan"></i>
+                        <h2>即時同步日誌</h2>
+                    </div>
+                    <div class="terminal-controls">
+                        <span class="terminal-dot red"></span>
+                        <span class="terminal-dot yellow"></span>
+                        <span class="terminal-dot green"></span>
+                    </div>
+                </div>
+                <div class="terminal-body" id="log-terminal">
+                    <div class="log-line system-msg">[系統] 等待使用者發起 Gmail 同步...</div>
+                    <div class="log-line tip-msg">[提示] 點擊右上角「立即同步 Gmail」按鈕，即可開始拉取最新發票。</div>
+                </div>
+            </div>
+
+            <!-- Right: Chart Panels (Tabs or Grid) -->
+            <div class="charts-panel glass-card">
+                <div class="panel-header">
+                    <div class="panel-title-wrapper">
+                        <i data-lucide="bar-chart-3" class="title-icon text-purple"></i>
+                        <h2>數據分析圖表</h2>
+                    </div>
+                    <div class="chart-tab-controls">
+                        <button class="tab-btn active" data-target="spend-chart-wrapper">月度消費趨勢</button>
+                        <button class="tab-btn" data-target="status-chart-wrapper">發票狀態佔比</button>
+                    </div>
+                </div>
+                <div class="chart-body">
+                    <div class="chart-wrapper active" id="spend-chart-wrapper">
+                        <canvas id="spendChart"></canvas>
+                    </div>
+                    <div class="chart-wrapper" id="status-chart-wrapper">
+                        <canvas id="statusChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Invoices List & Data Table -->
+        <section class="invoices-table-panel glass-card">
+            <div class="table-panel-header">
+                <div class="panel-title-wrapper">
+                    <i data-lucide="list-filter" class="title-icon text-blue"></i>
+                    <h2>發票明細清單</h2>
+                </div>
+                
+                <div class="table-actions">
+                    <!-- Search Bar -->
+                    <div class="search-input-wrapper">
+                        <i data-lucide="search" class="search-icon"></i>
+                        <input type="text" id="search-input" placeholder="搜尋發票號碼、金額、郵件主旨...">
+                    </div>
+                    <!-- Status Filter -->
+                    <select id="status-filter" class="custom-select">
+                        <option value="all">所有狀態</option>
+                        <option value="中獎">中獎發票</option>
+                        <option value="未中獎">未中獎</option>
+                        <option value="未開獎">未開獎</option>
+                        <option value="無法對獎">無法對獎(加密)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Table Container -->
+            <div class="table-container">
+                <table id="invoices-table">
+                    <thead>
+                        <tr>
+                            <th>發票號碼</th>
+                            <th>發票日期</th>
+                            <th>金額 (元)</th>
+                            <th>來源郵件主旨</th>
+                            <th>收信時間</th>
+                            <th>PDF 檔名</th>
+                            <th>對獎結果</th>
+                            <th>匯入時間</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body">
+                        <tr>
+                            <td colspan="8" class="text-center text-muted py-5">
+                                <div class="loading-spinner-wrapper">
+                                    <i data-lucide="loader-2" class="spinner"></i>
+                                    <span>載入中...</span>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Table Footer & Pagination -->
+            <div class="table-footer">
+                <div class="table-info">
+                    顯示第 <span id="start-idx">0</span> 到 <span id="end-idx">0</span> 筆，共 <span id="total-filtered-count">0</span> 筆記錄
+                </div>
+                <div class="pagination-controls">
+                    <button class="btn btn-secondary btn-icon" id="prev-page-btn" disabled>
+                        <i data-lucide="chevron-left"></i>
+                    </button>
+                    <span class="page-number" id="page-num-display">頁碼 1 / 1</span>
+                    <button class="btn btn-secondary btn-icon" id="next-page-btn" disabled>
+                        <i data-lucide="chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- App JS -->
+    <script src="app.js"></script>
+</body>
+</html>
