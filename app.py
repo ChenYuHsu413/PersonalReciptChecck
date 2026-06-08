@@ -106,7 +106,37 @@ class QueueStream:
     def flush(self):
         pass
 
+# ----------------- Password Lock Check -----------------
+
+def get_dashboard_password():
+    # 1. 優先從環境變數讀取
+    val = os.getenv("DASHBOARD_PASSWORD")
+    if val is not None:
+        return val
+    # 2. 嘗試從 Streamlit Secrets 讀取
+    try:
+        import streamlit as st
+        if "DASHBOARD_PASSWORD" in st.secrets:
+            return str(st.secrets["DASHBOARD_PASSWORD"])
+    except Exception:
+        pass
+    return "admin"  # 本地預設密碼
+
+correct_password = get_dashboard_password()
+
+# 密碼輸入框
+st.sidebar.markdown("### 🔑 系統身分驗證")
+password_input = st.sidebar.text_input("輸入系統檢視密碼", type="password")
+
+if password_input != correct_password:
+    st.title("🔒 統一發票自動化對獎系統")
+    st.warning("⚠️ 請在左側側邊欄輸入正確的系統密碼以解鎖儀表板。")
+    if correct_password == "admin":
+        st.info("💡 目前系統使用預設密碼 `admin`。如果要自訂密碼，請在您的環境變數 (.env) 或 Streamlit Secrets 中設定 `DASHBOARD_PASSWORD`。")
+    st.stop()
+
 # ----------------- Sidebar & Configurations -----------------
+
 
 st.sidebar.title("🧾 系統設定 & 同步")
 

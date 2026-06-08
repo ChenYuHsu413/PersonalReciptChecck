@@ -139,12 +139,16 @@ streamlit run app.py
    SHEET_NAME = "工作表1"
    PARSER_MODE = "local"
    
+   # [選填] 您的網頁解鎖密碼，若無設定則預設密碼為 "admin"
+   DASHBOARD_PASSWORD = "您自訂的解鎖密碼"
+   
    # 將您的金鑰檔案內容轉為一整行的 JSON 字串貼在單引號中：
    GCP_CREDENTIALS_JSON = '{"installed":...}'
    GCP_SERVICE_ACCOUNT_JSON = '{"type":"service_account",...}'
    GCP_TOKEN_JSON = '{"token":...}'
    ```
 3. 儲存設定。系統會在啟動時自動讀取這些 Secrets，並安全地在雲端虛擬環境中生成對應的檔案完成認證！
+
 
 
 ---
