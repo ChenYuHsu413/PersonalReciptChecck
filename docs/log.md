@@ -69,3 +69,14 @@
   * 將該參數更正為正確的 `unsafe_allow_html=True`。
   * 將修復後的 [app.py](file:///d:/AI%20Class%20ChenYu/AIClass/ReciptCheck/app.py) 進行本地 commit 並推送至 GitHub，完成修復。
 
+---
+
+### 7. Streamlit Secrets 讀取與設定不全排查
+* **時間**: 2026-06-08 11:04:21
+* **使用者指令**: `我已經照做了但他還是說系統設定不完全，我漏掉什麼設定了嗎`
+* **處理動作**:
+  * 排查發現 Streamlit Cloud 平台執行時，寫入在側邊設定的 Secrets (如 `SPREADSHEET_ID` 等) 有時不會自動同步映射到作業系統的環境變數 (`os.environ`) 中，導致原先以 `os.getenv()` 取得變數的程式邏輯回傳為 `None`。
+  * 修改了 [config.py](file:///d:/AI%20Class%20ChenYu/AIClass/ReciptCheck/config.py)，在 `setup_secrets()` 中增加 fallback 機制：若在 `os.getenv()` 讀取為 `None` 時，自動調用 Streamlit 內建的 `st.secrets` 機制取得對應值。
+  * 將修改後的程式碼推送至 GitHub 倉庫（Commit 號：`5e67613`），完成雲端環境的完美相容。
+
+
