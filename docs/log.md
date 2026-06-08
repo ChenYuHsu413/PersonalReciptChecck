@@ -79,4 +79,15 @@
   * 修改了 [config.py](file:///d:/AI%20Class%20ChenYu/AIClass/ReciptCheck/config.py)，在 `setup_secrets()` 中增加 fallback 機制：若在 `os.getenv()` 讀取為 `None` 時，自動調用 Streamlit 內建的 `st.secrets` 機制取得對應值。
   * 將修改後的程式碼推送至 GitHub 倉庫（Commit 號：`5e67613`），完成雲端環境的完美相容。
 
+---
+
+### 8. 更新 README 中的 Demo 連結
+* **時間**: 2026-06-08 11:06:06
+* **使用者指令**: `幫我把demo link改成這個 https://chenyu-personalreciptchecck.streamlit.app/`
+* **處理動作**:
+  * 修改 [README.md](file:///d:/AI%20Class%20ChenYu/AIClass/ReciptCheck/README.md) 中第 3 行的 `Demo Link` 位址。
+  * 將原本的 GitHub Pages 連結更換為 Streamlit Cloud 的真實運行網址 `https://chenyu-personalreciptchecck.streamlit.app/`。
+  * 執行本地提交並推送至 GitHub。
+
+
 
