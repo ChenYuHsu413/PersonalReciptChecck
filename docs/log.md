@@ -89,5 +89,18 @@
   * 將原本的 GitHub Pages 連結更換為 Streamlit Cloud 的真實運行網址 `https://chenyu-personalreciptchecck.streamlit.app/`。
   * 執行本地提交並推送至 GitHub。
 
+---
+
+### 9. 網頁端安全性加值（新增密碼鎖）
+* **時間**: 2026-06-08 12:02:02
+* **使用者指令**: `幫我加上密碼鎖吧`
+* **處理動作**:
+  * 設計了動態密碼驗證邏輯，避免密碼被寫死在程式碼中上傳至 GitHub（防止原始碼洩漏）。
+  * 系統會在啟動時優先讀取環境變數或 Streamlit Secrets 中的 `DASHBOARD_PASSWORD` 變數。若無設定，則預設本地密碼為 `admin`，並給出友善的警示引導。
+  * 修改了 [app.py](file:///d:/AI%20Class%20ChenYu/AIClass/ReciptCheck/app.py)，在側邊欄的最上方新增了密碼輸入框。若密碼不正確會直接以 `st.stop()` 阻斷後續試算表資料的存取與 Gmail 同步，確保資訊安全。
+  * 更新了 [README.md](file:///d:/AI%20Class%20ChenYu/AIClass/ReciptCheck/README.md) 中關於 `DASHBOARD_PASSWORD` 的設定步驟說明。
+  * 執行本地提交並推送至 GitHub（Commit 號：`7e56957`）。
+
+
 
 
