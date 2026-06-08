@@ -58,3 +58,14 @@
   * 建立 `docs/log.md` 指令日誌。
   * 建立 `docs/工作報告.md` 詳細描述專案的歷程、現況與安全性考量。
   * 修改並大幅美化 `README.md`，加入各種精美 Badges、系統架構圖、Demo 連結與相關文檔連結。
+
+---
+
+### 6. Streamlit Cloud 錯誤排除
+* **時間**: 2026-06-08 10:57:06
+* **使用者指令**: `streamlit上面有錯誤`
+* **處理動作**:
+  * 排查發現 `app.py` 中載入自訂 CSS 樣式的 `st.markdown()` 被錯誤地使用了不存在的參數 `unsafe_view_check=True`。
+  * 將該參數更正為正確的 `unsafe_allow_html=True`。
+  * 將修復後的 [app.py](file:///d:/AI%20Class%20ChenYu/AIClass/ReciptCheck/app.py) 進行本地 commit 並推送至 GitHub，完成修復。
+
