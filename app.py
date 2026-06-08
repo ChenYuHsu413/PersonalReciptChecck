@@ -1,12 +1,12 @@
 import os
 import sys
-import io
 import re
+import time
+import queue
 import threading
-from typing import List, Dict, Any
-from fastapi import FastAPI, BackgroundTasks, HTTPException
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
+import pandas as pd
+import streamlit as st
+import plotly.express as px
 from datetime import datetime
 
 # 將當前目錄加入 PATH 以利 import main & config
@@ -15,79 +15,59 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from config import Config
 from main import get_sheets_worksheet, process_invoices
 
-app = FastAPI(title="Gmail 發票自動化對獎系統 API")
+# 頁面配置
+st.set_page_config(
+    page_title="發票自動化對獎系統",
+    page_icon="🧾",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# 全域狀態與日誌快取
-sync_lock = threading.Lock()
-sync_in_progress = False
-sync_logs: List[str] = []
+# 載入自訂 CSS 樣式使界面更具現代感 (微暗黑/玻璃擬態風格)
+st.markdown("""
+    <style>
+        .main {
+            background-color: #0f111a;
+            color: #ffffff;
+        }
+        .stMetric {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        div[data-testid="stMetricValue"] {
+            font-size: 28px;
+            font-weight: bold;
+            color: #00d2ff;
+        }
+        h1, h2, h3 {
+            color: #ffffff !important;
+        }
+        .stButton>button {
+            background: linear-gradient(135deg, #00c6ff, #0072ff);
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 5px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        .stButton>button:hover {
+            box-shadow: 0 0 15px rgba(0, 198, 255, 0.5);
+            transform: scale(1.02);
+        }
+    </style>
+""", unsafe_view_check=True)
 
-
-class LogRedirector(io.StringIO):
-    """自訂串流，用來捕獲 sys.stdout 的輸出並寫入日誌快取。"""
-    def write(self, string):
-        super().write(string)
-        stripped = string.strip()
-        if stripped:
-            # 去除終端機一些轉義字元，只保留乾淨的文字
-            clean_str = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', stripped) if 're' in globals() else stripped
-            sync_logs.append(clean_str)
-
-
-def run_sync_task():
-    """在背景線程中執行 Gmail 搜尋與解析工作。"""
-    global sync_in_progress, sync_logs
-    
-    # 確保安全重定向 stdout
-    old_stdout = sys.stdout
-    redirected = LogRedirector()
-    sys.stdout = redirected
-    
-    try:
-        print(f"[系統] 啟動背景同步排程 - 啟動時間: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        process_invoices()
-        print("[系統] 背景同步作業完成！")
-    except Exception as e:
-        print(f"[錯誤] 背景執行失敗: {e}")
-    finally:
-        sys.stdout = old_stdout
-        with sync_lock:
-            sync_in_progress = False
-
-
-@app.get("/api/invoices")
-def get_invoices():
-    """取得 Google Sheets 的所有發票列。"""
-    if not Config.validate():
-        raise HTTPException(status_code=500, detail="系統環境變數設定不完全，請先檢查 .env 檔案。")
-        
-    try:
-        worksheet = get_sheets_worksheet()
-        all_rows = worksheet.get_all_values()
-        
-        if not all_rows:
-            return []
-            
-        headers = all_rows[0]
-        data = []
-        
-        # 讀取資料行，並補齊不足的欄位避免 Index out of range
-        for row in all_rows[1:]:
-            d = {}
-            for idx, header in enumerate(headers):
-                d[header] = row[idx] if idx < len(row) else ""
-            data.append(d)
-            
-        return data
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"無法從試算表讀取資料: {str(e)}")
+# ----------------- Helper Functions -----------------
 
 def clean_amount(amt_str: str) -> int:
     """清理金額字串，移除逗號、貨幣符號、小數點等，並轉換為整數。"""
     if not amt_str:
         return 0
-    # 移除千分位逗號、貨幣符號、空白與「元」
-    cleaned = amt_str.replace(",", "").replace("$", "").replace("NT", "").replace("元", "").replace(" ", "")
+    cleaned = str(amt_str).replace(",", "").replace("$", "").replace("NT", "").replace("元", "").replace(" ", "")
     if "." in cleaned:
         cleaned = cleaned.split(".")[0]
     match = re.search(r'\d+', cleaned)
@@ -98,115 +78,244 @@ def clean_amount(amt_str: str) -> int:
             pass
     return 0
 
+def group_status(res_str: str) -> str:
+    """歸類發票對獎狀態，簡化統計分類。"""
+    if not res_str:
+        return "未知"
+    if "未開獎" in res_str:
+        return "未開獎"
+    elif "已逾期" in res_str:
+        return "已逾期"
+    elif "未中獎" in res_str:
+        return "未中獎"
+    elif "中" in res_str:
+        return "中獎發票"
+    elif "無法對獎" in res_str or "密碼保護" in res_str:
+        return "無法對獎(加密)"
+    return res_str
 
-@app.get("/api/stats")
-def get_stats():
-    """計算發票的統計數據（如總金額、各月份消費趨勢、對獎狀態分佈）。"""
-    try:
-        worksheet = get_sheets_worksheet()
-        all_rows = worksheet.get_all_values()
+class QueueStream:
+    """自訂輸出串流，將 sys.stdout 重新導向至 Queue 中以利 Streamlit 讀取日誌。"""
+    def __init__(self, q):
+        self.q = q
+    def write(self, buf):
+        for line in buf.rstrip().split('\n'):
+            if line.strip():
+                # 去除終端機轉義字元
+                clean_str = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', line.strip())
+                self.q.put(clean_str)
+    def flush(self):
+        pass
+
+# ----------------- Sidebar & Configurations -----------------
+
+st.sidebar.title("🧾 系統設定 & 同步")
+
+# 先驗證環境變數
+config_ok = Config.validate()
+
+if not config_ok:
+    st.sidebar.error("❌ 系統環境設定不完全")
+else:
+    st.sidebar.success("⚡ 系統配置狀態：就緒")
+    st.sidebar.info(f"📋 工作表：{Config.SHEET_NAME}")
+
+# 同步按鈕
+if st.sidebar.button("立即同步 Gmail", disabled=not config_ok):
+    st.sidebar.warning("🔄 Gmail 同步中，請勿關閉視窗...")
+    
+    # 建立日誌容器與 Queue
+    log_container = st.empty()
+    log_queue = queue.Queue()
+    stream = QueueStream(log_queue)
+    
+    # 備份與重新導向 stdout
+    old_stdout = sys.stdout
+    sys.stdout = stream
+    
+    # 啟動同步線程
+    sync_thread = threading.Thread(target=process_invoices)
+    sync_thread.start()
+    
+    logs = []
+    # 輪詢線程狀態並實時渲染日誌
+    while sync_thread.is_alive():
+        while not log_queue.empty():
+            logs.append(log_queue.get())
+        if logs:
+            log_container.code("\n".join(logs[-25:]), language="text")
+        time.sleep(0.5)
         
-        if len(all_rows) <= 1:
-            return {
-                "total_count": 0,
-                "total_amount": 0,
-                "status_dist": {},
-                "monthly_spending": {}
-            }
-            
+    # 線程結束後撈出剩下日誌
+    while not log_queue.empty():
+        logs.append(log_queue.get())
+    log_container.code("\n".join(logs), language="text")
+    
+    # 還原 stdout
+    sys.stdout = old_stdout
+    st.sidebar.success("🎉 同步作業完成！")
+    time.sleep(1.5)
+    st.rerun()
+
+# ----------------- Main Dashboard -----------------
+
+st.title("📊 統一發票自動化對獎系統")
+st.markdown("基於 Gmail API 與 Google Sheets API 實現的發票自動解析、對獎與雲端備份後台。")
+st.markdown("---")
+
+if not config_ok:
+    st.error("### ⚠️ 系統尚未完成設定")
+    st.markdown("""
+        請按照以下步驟完成設定：
+        
+        #### 本地運行 (.env)：
+        1. 在專案根目錄建立 `.env` 檔案。
+        2. 填入以下必要的變數：
+           * `SPREADSHEET_ID`: 您的 Google 試算表 ID。
+           * `SHEET_NAME`: 匯入的工作表分頁名稱 (如 `工作表1`)。
+           * `PARSER_MODE`: `local` / `gemini` / `claude` 之一。
+        3. 確保專案根目錄有 `credentials.json` 與 `service_account.json`。
+        
+        #### Streamlit.io (Cloud) 雲端運行：
+        1. 登入 Streamlit 管理後台，點進您的 App 設定。
+        2. 尋找 **Secrets** 配置區塊，填入以下設定：
+           ```toml
+           SPREADSHEET_ID = "您的 Google 試算表 ID"
+           SHEET_NAME = "工作表1"
+           PARSER_MODE = "local"
+           # 將金鑰檔案內容轉為一整行的 JSON 字串
+           GCP_CREDENTIALS_JSON = '{"installed":...}'
+           GCP_SERVICE_ACCOUNT_JSON = '{"type":"service_account",...}'
+           GCP_TOKEN_JSON = '{"token":...}'
+           ```
+    """)
+else:
+    # 取得 Google Sheets 資料
+    with st.spinner("正在從 Google 試算表讀取發票資料..."):
+        try:
+            worksheet = get_sheets_worksheet()
+            all_rows = worksheet.get_all_values()
+        except Exception as e:
+            st.error(f"❌ 無法連接至試算表: {e}")
+            all_rows = []
+
+    if not all_rows or len(all_rows) <= 1:
+        st.info("ℹ️ 試算表中目前無任何發票明細。請在左側選單點選「立即同步 Gmail」開始匯入。")
+    else:
         headers = all_rows[0]
         rows = all_rows[1:]
         
-        total_count = len(rows)
-        total_amount = 0
-        status_dist = {}
-        monthly_spending = {}
-        
-        # 尋找關鍵欄位的索引
-        col_idx = {h: idx for idx, h in enumerate(headers)}
-        
-        amt_idx = col_idx.get("總金額", 2)
-        date_idx = col_idx.get("發票日期", 1)
-        res_idx = col_idx.get("對獎結果", 6)
-        
+        # 建立 DataFrame
+        data = []
         for row in rows:
-            # 1. 總金額累加
-            amt_str = row[amt_idx] if amt_idx < len(row) else "0"
-            total_amount += clean_amount(amt_str)
-                
-            # 2. 對獎狀態分佈
-            res_str = row[res_idx] if res_idx < len(row) else "未知"
-            # 簡化狀態分類，例如 "未開獎 (將於 2026/07/25 開獎)" -> 歸類為 "未開獎"
-            status_key = "未知"
-            if "未開獎" in res_str:
-                status_key = "未開獎"
-            elif "已逾期" in res_str:
-                status_key = "已逾期"
-            elif "未中獎" in res_str:
-                status_key = "未中獎"
-            elif "中" in res_str:
-                status_key = "中獎發票"
-            elif "無法對獎" in res_str or "密碼保護" in res_str:
-                status_key = "無法對獎(加密)"
+            d = {}
+            for idx, header in enumerate(headers):
+                d[header] = row[idx] if idx < len(row) else ""
+            data.append(d)
+        
+        df = pd.DataFrame(data)
+        
+        # 清理並轉化欄位
+        df["總金額_int"] = df["總金額"].apply(clean_amount)
+        df["狀態"] = df["對獎結果"].apply(group_status)
+        
+        # 計算指標
+        total_count = len(df)
+        total_amount = df["總金額_int"].sum()
+        
+        # 中獎數計數
+        winning_count = df["對獎結果"].str.contains("中").sum()
+        
+        # 雲端加密或無法對獎計數
+        encrypted_count = df["狀態"].str.contains("無法對獎").sum()
+        
+        # 1. 指標卡列
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("累積讀取發票", f"{total_count} 張", help="經由 Gmail 解析並記錄之發票總數")
+        col2.metric("累積消費金額", f"NT$ {total_amount:,}", f"平均每張 NT$ {int(total_amount/total_count) if total_count > 0 else 0:,}")
+        col3.metric("中獎發票數", f"{winning_count} 張", delta=f"+{winning_count}" if winning_count > 0 else None, delta_color="inverse")
+        col4.metric("加密/無法對獎", f"{encrypted_count} 張", help="因密碼保護或格式異常而需手動處置的發票")
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # 2. 圖表統計列
+        chart_col1, chart_col2 = st.columns([3, 2])
+        
+        with chart_col1:
+            st.subheader("📈 月度消費趨勢")
+            # 依據發票日期 (YYYY-MM) 進行分組
+            df["發票月份"] = df["發票日期"].apply(lambda x: x[:7] if len(str(x)) >= 7 and "-" in str(x) else "未知")
+            monthly_spending = df[df["發票月份"] != "未知"].groupby("發票月份")["總金額_int"].sum().reset_index()
+            monthly_spending = monthly_spending.sort_values("發票月份")
+            
+            if not monthly_spending.empty:
+                fig_trend = px.area(
+                    monthly_spending, 
+                    x="發票月份", 
+                    y="總金額_int", 
+                    title="每月累計消費金額 (NT$)",
+                    labels={"發票月份": "月份", "總金額_int": "總金額 (元)"},
+                    template="plotly_dark",
+                    line_shape="spline"
+                )
+                fig_trend.update_traces(line_color="#00d2ff", fillcolor="rgba(0, 210, 255, 0.2)")
+                st.plotly_chart(fig_trend, use_container_width=True)
             else:
-                status_key = res_str
+                st.info("無足夠的月份日期資料繪製趨勢圖。")
                 
-            status_dist[status_key] = status_dist.get(status_key, 0) + 1
+        with chart_col2:
+            st.subheader("🍩 發票對獎狀態佔比")
+            status_counts = df["狀態"].value_counts().reset_index()
+            status_counts.columns = ["狀態", "張數"]
             
-            # 3. 月份消費趨勢 (從發票日期擷取 YYYY-MM)
-            date_str = row[date_idx] if date_idx < len(row) else ""
-            if len(date_str) >= 7 and "-" in date_str:
-                month_key = date_str[:7]  # YYYY-MM
-                amt_str = row[amt_idx] if amt_idx < len(row) else "0"
-                monthly_spending[month_key] = monthly_spending.get(month_key, 0) + clean_amount(amt_str)
-                    
-        # 將月份趨勢按時間排序
-        sorted_spending = dict(sorted(monthly_spending.items()))
+            if not status_counts.empty:
+                fig_pie = px.pie(
+                    status_counts, 
+                    values="張數", 
+                    names="狀態", 
+                    hole=0.4,
+                    template="plotly_dark",
+                    color_discrete_sequence=px.colors.qualitative.Pastel
+                )
+                fig_pie.update_layout(showlegend=True)
+                st.plotly_chart(fig_pie, use_container_width=True)
+            else:
+                st.info("無資料繪製狀態佔比圖。")
+                
+        st.markdown("---")
         
-        return {
-            "total_count": total_count,
-            "total_amount": total_amount,
-            "status_dist": status_dist,
-            "monthly_spending": sorted_spending
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"無法計算統計資料: {str(e)}")
-
-
-@app.post("/api/sync")
-def trigger_sync(background_tasks: BackgroundTasks):
-    """啟動 Gmail 與 Google Sheets 的非同步同步流程。"""
-    global sync_in_progress, sync_logs
-    
-    with sync_lock:
-        if sync_in_progress:
-            return JSONResponse(status_code=400, content={"status": "already_running", "message": "同步作業目前正在執行中，請勿重複提交。"})
+        # 3. 搜尋與明細列表
+        st.subheader("🔍 發票明細即時搜尋")
+        
+        # 搜尋篩選區
+        filter_col1, filter_col2 = st.columns([3, 1])
+        with filter_col1:
+            search_query = st.text_input("輸入關鍵字進行模糊搜尋 (如發票號碼、金額、郵件主旨、檔名)", "")
+        with filter_col2:
+            status_list = ["全部"] + list(df["狀態"].unique())
+            selected_status = st.selectbox("狀態篩選", status_list)
             
-        sync_in_progress = True
-        sync_logs.clear()  # 清空舊的日誌
+        # 套用篩選邏輯
+        filtered_df = df.copy()
+        if selected_status != "全部":
+            filtered_df = filtered_df[filtered_df["狀態"] == selected_status]
+            
+        if search_query:
+            q = search_query.lower()
+            filtered_df = filtered_df[
+                filtered_df["發票號碼"].str.lower().str.contains(q) |
+                filtered_df["總金額"].str.lower().str.contains(q) |
+                filtered_df["來源郵件主旨"].str.lower().str.contains(q) |
+                filtered_df["PDF 檔名"].str.lower().str.contains(q)
+            ]
+            
+        # 顯示明細
+        st.write(f"🔍 找到 {len(filtered_df)} 筆符合條件的發票：")
         
-    background_tasks.add_task(run_sync_task)
-    return {"status": "started", "message": "已成功啟動同步作業。"}
-
-
-@app.get("/api/sync/status")
-def get_sync_status():
-    """查詢同步作業的目前狀態以及日誌輸出。"""
-    global sync_in_progress, sync_logs
-    return {
-        "in_progress": sync_in_progress,
-        "logs": list(sync_logs)
-    }
-
-
-# 掛載靜態文件目錄，供前端頁面呈現
-# 確保 static 目錄存在，並在最下方掛載，以便 API 路由優先
-static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
-os.makedirs(static_dir, exist_ok=True)
-app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
-
-if __name__ == "__main__":
-    import uvicorn
-    print("\n[系統] 正在啟動發票對獎 Web App 服務器...")
-    print("[系統] 請在瀏覽器打開: http://localhost:8000")
-    uvicorn.run("app:app", host="127.0.0.1", port=8000, reload=True)
+        # 隱藏不需要對外的計算列
+        display_columns = [col for col in filtered_df.columns if col not in ["總金額_int", "狀態", "發票月份"]]
+        st.dataframe(
+            filtered_df[display_columns],
+            use_container_width=True,
+            hide_index=True
+        )

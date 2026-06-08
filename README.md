@@ -7,15 +7,12 @@
 ## 🛠️ 技術堆疊 (Technology Stack)
 
 ![Python](https://img.shields.io/badge/python-3.8+-blue.svg?style=for-the-badge&logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)
-![Uvicorn](https://img.shields.io/badge/Uvicorn-222222?style=for-the-badge&logo=uvicorn&logoColor=white)
+![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)
+![Plotly](https://img.shields.io/badge/Plotly-3F4F75?style=for-the-badge&logo=plotly&logoColor=white)
 ![Google Sheets API](https://img.shields.io/badge/Google_Sheets_API-34A853?style=for-the-badge&logo=google-sheets&logoColor=white)
 ![Gmail API](https://img.shields.io/badge/Gmail_API-EA4335?style=for-the-badge&logo=gmail&logoColor=white)
 ![Gemini API](https://img.shields.io/badge/Gemini_API-8E75C2?style=for-the-badge&logo=google-gemini&logoColor=white)
-![Chart.js](https://img.shields.io/badge/Chart.js-FF6384?style=for-the-badge&logo=chartdotjs&logoColor=white)
-![HTML5](https://img.shields.io/badge/HTML5-E34F26?style=for-the-badge&logo=html5&logoColor=white)
-![CSS3](https://img.shields.io/badge/CSS3-1572B6?style=for-the-badge&logo=css3&logoColor=white)
-![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?style=for-the-badge&logo=javascript&logoColor=black)
+
 
 ---
 
@@ -110,23 +107,45 @@ pip install -r requirements.txt
 ## 🚀 第四步：執行方式
 
 ### 模式 A：極致美觀的 Web App 儀表板 (推薦)
-我們提供了一個精美的數據視覺化後台。在終端機中執行：
+本專案採用 **Streamlit** 打造數據視覺化後台。在終端機中執行：
 
 ```bash
-python app.py
+streamlit run app.py
 ```
 
-1. 啟動後，請在瀏覽器打開：**`http://localhost:8000`**
-2. **立即同步**：點擊右上角的「立即同步 Gmail」按鈕，後台會以背景線程拉取 Gmail，並在網頁的 **即時同步日誌** 中滾動顯示詳細的分析進度。
+1. 啟動後，請在瀏覽器打開預設網址：**`http://localhost:8501`**
+2. **立即同步**：在左側側邊欄點擊「立即同步 Gmail」按鈕，系統會啟動背景線程拉取 Gmail，並在網頁的 **即時日誌視窗** 中滾動顯示詳細的分析進度。
 3. **圖表分析**：
-   * **月度消費趨勢**：採用 Chart.js 繪製平滑漸層面積圖，清晰掌握您的月度支出。
-   * **發票狀態佔比**：甜甜圈圖清晰區分「中獎」、「未中獎」、「未開獎」以及「加密/無法對獎」的發票比例。
+   * **月度消費趨勢**：採用 Plotly 繪製漸層面積圖，清晰掌握您的月度支出。
+   * **發票狀態佔比**：Plotly 甜甜圈圓餅圖清晰區分「中獎」、「未中獎」、「未開獎」以及「加密/無法對獎」的發票比例。
 4. **即時檢索明細**：
-   * 下方的明細列表支持發票號碼、金額、郵件主旨、檔名等條件的 **即時模糊搜尋** 與 **狀態篩選**。
-   * 分頁顯示功能確保載入大量發票時頁面依然流暢。
+   * 下方的明細列表支持發票號碼、金額、郵件主旨、檔名等條件的 **即時模糊搜尋** 與 **對獎狀態篩選**。
 
 > [!NOTE]
-> 首次啟動同步時，系統會自動在終端機端或瀏覽器彈出 Google OAuth 登入畫面。請登入您的 Gmail 帳號授權，成功後會在本地生成 `token.json`，以後執行將全自動跳過授權。
+> 首次在本地啟動同步時，系統會自動在瀏覽器中彈出 Google OAuth 登入畫面。請登入您的 Gmail 帳號授權，成功後會在本地生成 `token.json`，以後執行將全自動跳過授權。
+
+---
+
+### ☁️ 部署至 Streamlit Cloud (streamlit.io) 的安全憑證設定
+
+由於本專案為公開/私有開源倉庫，**請絕對不要將憑證檔案 (`credentials.json`, `service_account.json`, `token.json` 及 `.env`) 上傳到 GitHub**。
+
+要在 Streamlit Cloud 上順利執行發票同步，請使用 Streamlit 的 **Secrets** 功能：
+
+1. 登入 [Streamlit Share](https://share.streamlit.io/) 並進入您的 App 管理頁面。
+2. 點擊 **Settings** -> **Secrets**，並貼入以下內容：
+   ```toml
+   SPREADSHEET_ID = "您的 Google 試算表 ID"
+   SHEET_NAME = "工作表1"
+   PARSER_MODE = "local"
+   
+   # 將您的金鑰檔案內容轉為一整行的 JSON 字串貼在單引號中：
+   GCP_CREDENTIALS_JSON = '{"installed":...}'
+   GCP_SERVICE_ACCOUNT_JSON = '{"type":"service_account",...}'
+   GCP_TOKEN_JSON = '{"token":...}'
+   ```
+3. 儲存設定。系統會在啟動時自動讀取這些 Secrets，並安全地在雲端虛擬環境中生成對應的檔案完成認證！
+
 
 ---
 

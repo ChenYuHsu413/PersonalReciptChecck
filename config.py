@@ -30,8 +30,50 @@ class Config:
     SERVICE_ACCOUNT_FILE = "service_account.json"
 
     @classmethod
+    def setup_secrets(cls):
+        """如果環境變數中存在憑證 JSON 內容且本地檔案不存在，則動態寫入檔案。"""
+        import json
+        
+        # 1. 檢查並寫入 credentials.json
+        if not os.path.exists(cls.OAUTH_CREDENTIALS_FILE):
+            creds_data = os.getenv("GCP_CREDENTIALS_JSON")
+            if creds_data:
+                try:
+                    json.loads(creds_data)
+                    with open(cls.OAUTH_CREDENTIALS_FILE, "w", encoding="utf-8") as f:
+                        f.write(creds_data)
+                    print("[系統] 已從環境變數載入 credentials.json")
+                except Exception as e:
+                    print(f"[系統] 寫入 credentials.json 失敗: {e}")
+                    
+        # 2. 檢查並寫入 service_account.json
+        if not os.path.exists(cls.SERVICE_ACCOUNT_FILE):
+            sa_data = os.getenv("GCP_SERVICE_ACCOUNT_JSON")
+            if sa_data:
+                try:
+                    json.loads(sa_data)
+                    with open(cls.SERVICE_ACCOUNT_FILE, "w", encoding="utf-8") as f:
+                        f.write(sa_data)
+                    print("[系統] 已從環境變數載入 service_account.json")
+                except Exception as e:
+                    print(f"[系統] 寫入 service_account.json 失敗: {e}")
+
+        # 3. 檢查並寫入 token.json
+        if not os.path.exists(cls.OAUTH_TOKEN_FILE):
+            token_data = os.getenv("GCP_TOKEN_JSON")
+            if token_data:
+                try:
+                    json.loads(token_data)
+                    with open(cls.OAUTH_TOKEN_FILE, "w", encoding="utf-8") as f:
+                        f.write(token_data)
+                    print("[系統] 已從環境變數載入 token.json")
+                except Exception as e:
+                    print(f"[系統] 寫入 token.json 失敗: {e}")
+
+    @classmethod
     def validate(cls):
         """驗證必要的設定是否存在。"""
+        cls.setup_secrets()
         errors = []
         
         if not cls.SPREADSHEET_ID or cls.SPREADSHEET_ID == "your_google_sheet_id_here":
