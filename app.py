@@ -57,9 +57,8 @@ st.markdown("""
         .stButton>button:hover {
             box-shadow: 0 0 15px rgba(0, 198, 255, 0.5);
             transform: scale(1.02);
-        }
     </style>
-""", unsafe_view_check=True)
+""", unsafe_allow_html=True)
 
 # ----------------- Helper Functions -----------------
 
