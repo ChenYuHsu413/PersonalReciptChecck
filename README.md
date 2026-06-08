@@ -1,6 +1,6 @@
 # 郵件電子發票自動化解析與 Google Sheets 匯入工具 (Python 實作) 🧾✨
 
-🚀 **Demo Link**: [https://chenyuhsu413.github.io/PersonalReciptChecck/](https://chenyuhsu413.github.io/PersonalReciptChecck/)
+🚀 **Demo Link**: [https://chenyu-personalreciptchecck.streamlit.app/](https://chenyu-personalreciptchecck.streamlit.app/)
 
 ---
 
