@@ -34,9 +34,34 @@ class Config:
         """如果環境變數中存在憑證 JSON 內容且本地檔案不存在，則動態寫入檔案。"""
         import json
         
+        # 重新從環境變數與 Streamlit Secrets 載入變數，確保動態獲取最新值
+        def get_val(key, default=None):
+            val = os.getenv(key)
+            if val is not None:
+                return val
+            try:
+                import streamlit as st
+                if key in st.secrets:
+                    return str(st.secrets[key])
+            except Exception:
+                pass
+            return default
+
+        # 動態更新類別變數
+        cls.SPREADSHEET_ID = get_val("SPREADSHEET_ID", cls.SPREADSHEET_ID)
+        cls.SHEET_NAME = get_val("SHEET_NAME", cls.SHEET_NAME)
+        cls.GMAIL_SEARCH_QUERY = get_val("GMAIL_SEARCH_QUERY", cls.GMAIL_SEARCH_QUERY)
+        
+        parser_mode_val = get_val("PARSER_MODE", cls.PARSER_MODE)
+        if parser_mode_val:
+            cls.PARSER_MODE = parser_mode_val.lower()
+            
+        cls.GEMINI_API_KEY = get_val("GEMINI_API_KEY", cls.GEMINI_API_KEY)
+        cls.ANTHROPIC_API_KEY = get_val("ANTHROPIC_API_KEY", cls.ANTHROPIC_API_KEY)
+        
         # 1. 檢查並寫入 credentials.json
         if not os.path.exists(cls.OAUTH_CREDENTIALS_FILE):
-            creds_data = os.getenv("GCP_CREDENTIALS_JSON")
+            creds_data = get_val("GCP_CREDENTIALS_JSON")
             if creds_data:
                 try:
                     json.loads(creds_data)
@@ -48,7 +73,7 @@ class Config:
                     
         # 2. 檢查並寫入 service_account.json
         if not os.path.exists(cls.SERVICE_ACCOUNT_FILE):
-            sa_data = os.getenv("GCP_SERVICE_ACCOUNT_JSON")
+            sa_data = get_val("GCP_SERVICE_ACCOUNT_JSON")
             if sa_data:
                 try:
                     json.loads(sa_data)
@@ -60,7 +85,7 @@ class Config:
 
         # 3. 檢查並寫入 token.json
         if not os.path.exists(cls.OAUTH_TOKEN_FILE):
-            token_data = os.getenv("GCP_TOKEN_JSON")
+            token_data = get_val("GCP_TOKEN_JSON")
             if token_data:
                 try:
                     json.loads(token_data)
@@ -69,6 +94,7 @@ class Config:
                     print("[系統] 已從環境變數載入 token.json")
                 except Exception as e:
                     print(f"[系統] 寫入 token.json 失敗: {e}")
+
 
     @classmethod
     def validate(cls):
