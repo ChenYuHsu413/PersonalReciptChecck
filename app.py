@@ -1,6 +1,7 @@
 import os
 import sys
 import re
+import html
 import time
 import queue
 import threading
@@ -57,6 +58,64 @@ st.markdown("""
         .stButton>button:hover {
             box-shadow: 0 0 15px rgba(0, 198, 255, 0.5);
             transform: scale(1.02);
+        }
+        /* 發票卡片牆樣式 */
+        .invoice-card {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-left: 4px solid #00d2ff;
+            border-radius: 12px;
+            padding: 16px 18px;
+            margin-bottom: 16px;
+            min-height: 188px;
+            transition: all 0.25s ease;
+        }
+        .invoice-card:hover {
+            background: rgba(255, 255, 255, 0.07);
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+            transform: translateY(-3px);
+        }
+        .invoice-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .invoice-no {
+            font-size: 15px;
+            font-weight: 700;
+            color: #ffffff;
+            letter-spacing: 0.5px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .status-badge {
+            font-size: 12px;
+            font-weight: 700;
+            color: #0f111a;
+            padding: 3px 11px;
+            border-radius: 999px;
+            white-space: nowrap;
+        }
+        .invoice-amount {
+            font-size: 26px;
+            font-weight: 800;
+            color: #00d2ff;
+            margin-bottom: 12px;
+        }
+        .invoice-meta {
+            font-size: 13px;
+            color: #c3c9d5;
+            line-height: 1.85;
+        }
+        .invoice-meta .label { color: #8b93a7; }
+        .invoice-meta .row {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -92,6 +151,44 @@ def group_status(res_str: str) -> str:
     elif "無法對獎" in res_str or "密碼保護" in res_str:
         return "無法對獎(加密)"
     return res_str
+
+def status_style(status: str):
+    """依對獎狀態回傳 (emoji, 主色) 供卡片色標使用。"""
+    mapping = {
+        "中獎發票": ("🏆", "#f5a623"),
+        "未中獎": ("😔", "#6b7280"),
+        "已逾期": ("⏰", "#ef4444"),
+        "未開獎": ("⏳", "#00d2ff"),
+        "無法對獎(加密)": ("🔒", "#f97316"),
+        "未知": ("❔", "#9ca3af"),
+    }
+    return mapping.get(status, ("📄", "#9ca3af"))
+
+def render_invoice_card(row) -> str:
+    """將單筆發票 (DataFrame row) 轉為 HTML 卡片字串。"""
+    emoji, color = status_style(str(row["狀態"]))
+    no = html.escape(str(row.get("發票號碼", "") or "—"))
+    amount = int(row.get("總金額_int", 0) or 0)
+    date = html.escape(str(row.get("發票日期", "") or "—"))
+    result = html.escape(str(row.get("對獎結果", "") or "—"))
+    subject = html.escape(str(row.get("來源郵件主旨", "") or "—"))
+    pdf = html.escape(str(row.get("PDF 檔名", "") or "—"))
+    status = html.escape(str(row["狀態"]))
+    return f"""
+    <div class="invoice-card" style="border-left-color:{color}">
+        <div class="invoice-card-header">
+            <span class="invoice-no">📄 {no}</span>
+            <span class="status-badge" style="background:{color}">{emoji} {status}</span>
+        </div>
+        <div class="invoice-amount">NT$ {amount:,}</div>
+        <div class="invoice-meta">
+            <div class="row"><span class="label">🗓️ 日期：</span>{date}</div>
+            <div class="row" title="{result}"><span class="label">🎯 對獎：</span>{result}</div>
+            <div class="row" title="{subject}"><span class="label">✉️ 主旨：</span>{subject}</div>
+            <div class="row" title="{pdf}"><span class="label">📎 檔名：</span>{pdf}</div>
+        </div>
+    </div>
+    """
 
 class QueueStream:
     """自訂輸出串流，將 sys.stdout 重新導向至 Queue 中以利 Streamlit 讀取日誌。"""
@@ -340,11 +437,50 @@ else:
             
         # 顯示明細
         st.write(f"🔍 找到 {len(filtered_df)} 筆符合條件的發票：")
-        
-        # 隱藏不需要對外的計算列
-        display_columns = [col for col in filtered_df.columns if col not in ["總金額_int", "狀態", "發票月份"]]
-        st.dataframe(
-            filtered_df[display_columns],
-            use_container_width=True,
-            hide_index=True
-        )
+
+        if filtered_df.empty:
+            st.info("😶 沒有符合條件的發票，試試其他關鍵字或調整狀態篩選。")
+        else:
+            # 依發票日期由新到舊排序，較新發票優先呈現
+            display_df = filtered_df.sort_values("發票日期", ascending=False)
+
+            # 檢視模式切換
+            view_mode = st.radio(
+                "檢視模式",
+                ["🪪 卡片檢視", "📋 表格檢視"],
+                horizontal=True,
+                label_visibility="collapsed"
+            )
+
+            if view_mode == "📋 表格檢視":
+                # 隱藏不需要對外的計算列
+                display_columns = [c for c in display_df.columns if c not in ["總金額_int", "狀態", "發票月份"]]
+                st.dataframe(
+                    display_df[display_columns],
+                    use_container_width=True,
+                    hide_index=True
+                )
+            else:
+                # 卡片牆（含分頁，避免一次渲染過多卡片）
+                PAGE_SIZE = 12
+                COLS_PER_ROW = 3
+                total = len(display_df)
+                total_pages = (total - 1) // PAGE_SIZE + 1
+
+                page = 1
+                if total_pages > 1:
+                    page = st.number_input(
+                        f"頁數（共 {total_pages} 頁）",
+                        min_value=1, max_value=total_pages, value=1, step=1
+                    )
+
+                start = (page - 1) * PAGE_SIZE
+                page_df = display_df.iloc[start:start + PAGE_SIZE]
+
+                cards = [render_invoice_card(r) for _, r in page_df.iterrows()]
+                for i in range(0, len(cards), COLS_PER_ROW):
+                    cols = st.columns(COLS_PER_ROW)
+                    for j, card_html in enumerate(cards[i:i + COLS_PER_ROW]):
+                        cols[j].markdown(card_html, unsafe_allow_html=True)
+
+                st.caption(f"顯示第 {start + 1}–{min(start + PAGE_SIZE, total)} 筆，共 {total} 筆發票。")
